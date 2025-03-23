@@ -2,12 +2,12 @@
 
 INIT_SYSTEM="runit" # systemd, openrc, runit
 GPU="nvidia" # nvidia, amd
-DISPLAY_MANAGER="yes" # yes, no
-WINDOW_MANAGER="niri" # required if not using display manager
-START_WINDOW_MANAGER="dbus-run-session niri --session" # not sure if this works
+DISPLAY_MANAGER="yes" # да, нет
+WINDOW_MANAGER="niri" # нужно, если не используется менеджер входа
+START_WINDOW_MANAGER="dbus-run-session niri --session" # не уверен работает ли вообще
 GPU_PCI="pci_0000_01_00_0"
 GPU_AUDIO_PCI="pci_0000_01_00_1"
-VM_NAME="win10" # name of VM set during creation
+VM_NAME="win10" # имя виртуалки
 
 mkdir -pv tmp
 
@@ -55,7 +55,6 @@ fi
 EOF
 
 if [ "$DISPLAY_MANAGER" = "yes" ]; then
-  # TODO: use service provided by package if display-manager is not valid service
   dm_start=$(start_service "display-manager")
   dm_stop=$(stop_service "display-manager")
 
