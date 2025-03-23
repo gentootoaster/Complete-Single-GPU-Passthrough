@@ -1,37 +1,35 @@
-**Note**: I'm currently not using this, so my ability to provide support is limited. If you encounter issues or have questions about the setup, I recommend asking at [r/VFIO](https://reddit.com/r/vfio).
-
-## **Table Of Contents**
-* **[IOMMU Setup](#enable--verify-iommu)**
-* **[Installing Packages](#install-required-tools)**
-* **[Enabling Services](#enable-required-services)**
-* **[Guest Setup](#setup-guest-os)**
-* **[Attching PCI Devices](#attaching-pci-devices)**
+## **Использованные ресурсы**
+* **[Настройка IOMMU](#enable--verify-iommu)**
+* **[Установка пакетов](#install-required-tools)**
+* **[Включение сервисов](#enable-required-services)**
+* **[Настройка гостевой ОС](#setup-guest-os)**
+* **[Подключение PCI устройств](#attaching-pci-devices)**
 * **[Libvirt Hooks](#libvirt-hooks)**
-* **[Keyboard/Mouse Passthrough](#keyboardmouse-passthrough)**
-* **[Video Card Virtualisation Detection](#video-card-driver-virtualisation-detection)**
-* **[Audio Passthrough](#audio-passthrough)**
-* **[GPU vBIOS Patching](#vbios-patching)**
+* **[Проброс клавиатуры/мыши](#keyboardmouse-passthrough)**
+* **[Обнаружение виртуализации видеокарты](#video-card-driver-virtualisation-detection)**
+* **[Проброс аудио](#audio-passthrough)**
+* **[Патчинг vBIOS](#vbios-patching)**
 
-### **Enable & Verify IOMMU**
-***BIOS Settings*** \
-Enable ***Intel VT-d*** or ***AMD-Vi*** in BIOS settings. If these options are not present, it is likely that your hardware does not support IOMMU.
+### **Включение и проверка IOMMU**
+***Настройки BIOS*** \
+Необходимо включить ***Intel VT-d***, если используете процессор от Intel, или ***AMD-Vi***, если используете процессор от AMD. Если подобных опций нет, то скорее всего ваше железо не поддерживает IOMMU.
 
-Disable ***Resizable BAR Support*** in BIOS settings. 
-Cards that support Resizable BAR can cause problems with black screens following driver load if Resizable BAR is enabled in UEFI/BIOS. There doesn't seem to be a large performance penalty for disabling it, so turn it off for now until ReBAR support is available for KVM. 
+Выключение ***Resizable BAR Support*** в настройках BIOS. 
+Адаптеры, поддерживающие Resizable BAR, работают нестабильно, если он включен в настройках BIOS/UEFI. Выключение не приведет к сильному падению производительности, так что лучше его выключить, по крайней мере до появления полноценной поддержки ReBar в KVM.
 
-***Set the kernel paramater depending on your CPU.***
+***Установка необходимых параметров ядра для процессора.***
 
 <details>
   <summary><b>GRUB</b></summary>
 
-***Edit GRUB configuration***
+***Отредактируйте конфигурацию GRUB***
 | /etc/default/grub |
 | ----- |
 | `GRUB_CMDLINE_LINUX_DEFAULT="... intel_iommu=on iommu=pt ..."` |
-| OR |
+| Или |
 | `GRUB_CMDLINE_LINUX_DEFAULT="... amd_iommu=on iommu=pt ..."` |
 
-***Generate grub.cfg***
+***Генерация grub.cfg***
 ```sh
 grub-mkconfig -o /boot/grub/grub.cfg
 ```
@@ -39,23 +37,23 @@ grub-mkconfig -o /boot/grub/grub.cfg
 <details>
   <summary><b>Systemd Boot</b></summary>
 
-***Edit boot entry.***
+***Отредактируйте boot entry***
 | /boot/loader/entries/*.conf |
 | ----- |
 | `options root=UUID=...intel_iommu=on iommu=pt..` |
-| OR |
+| Или |
 | `options root=UUID=...amd_iommu=on iommu=pt..` |
 </details>
 
-Reboot your system for the changes to take effect.
+Чтобы изменения вступили в силу, необходимо перезагрузить машину.
 
-***To verify IOMMU, run the following command.***
+***Для проверки IOMMU можно использовать следующую команду.***
 ```sh
 dmesg | grep IOMMU
 ```
-The output should include the message `Intel-IOMMU: enabled` for Intel CPUs or `AMD-Vi: AMD IOMMUv2 loaded and initialized` for AMD CPUs.
+Если всё работает, то выводом будет `Intel-IOMMU: enabled` для Intel, или `AMD-Vi: AMD IOMMUv2 loaded and initialized` для AMD.
 
-To view the IOMMU groups and attached devices, run the following script:
+Чтобы посмотреть группы IOMMU и подключенные устройства, можно запустить следующий скрипт:
 ```sh
 #!/bin/bash
 shopt -s nullglob
@@ -67,10 +65,7 @@ for g in `find /sys/kernel/iommu_groups/* -maxdepth 0 -type d | sort -V`; do
 done;
 ```
 
-When using passthrough, it is necessary to pass every device in the group that includes your GPU. \
-You can avoid having to pass everything by using [ACS override patch](https://wiki.archlinux.org/title/PCI_passthrough_via_OVMF#Bypassing_the_IOMMU_groups_(ACS_override_patch)).
-
-### **Install required tools**
+### **Установка необходимых инструментов**
 <details>
   <summary><b>Gentoo Linux</b></summary>
 
@@ -103,7 +98,7 @@ You can avoid having to pass everything by using [ACS override patch](https://wi
   ```
 </details>
 
-### **Enable required services**
+### **Запуск необходимых сервисов**
 <details>
   <summary><b>SystemD</b></summary>
 
@@ -121,42 +116,41 @@ You can avoid having to pass everything by using [ACS override patch](https://wi
   ```
 </details>
 
-Sometimes, you might need to start default network manually.
+Иногда нужно запустить сеть вручную.
 ```sh
 virsh net-start default
 virsh net-autostart default
 ```
 
-### **Setup Guest OS**
-***NOTE: You should replace win10 with your VM's name where applicable*** \
-You should add your user to ***libvirt*** group to be able to run VM without root. And, ***input*** and ***kvm*** group for passing input devices.
+### **Настройка гостевой ОС**
+Чтобы запускать виртуальные машины без прав root-пользователя, следует добавить пользователя в группу ***libvirt***. А также в группы ***input*** и ***kvm*** для проброса устройств ввода.
 ```sh
 usermod -aG kvm,input,libvirt username
 ```
 
-Download [virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso) driver. \
-Launch ***virt-manager*** and create a new virtual machine. Select ***Customize before install*** on Final Step. \
-In ***Overview*** section, set ***Chipset*** to ***Q35***, and ***Firmware*** to ***UEFI*** \
-In ***CPUs*** section, set ***CPU model*** to ***host-passthrough***, and ***CPU Topology*** to whatever fits your system. \
-For ***SATA*** disk of VM, set ***Disk Bus*** to ***virtio***. \
-In ***NIC*** section, set ***Device Model*** to ***virtio*** \
-Add Hardware > CDROM: virtio-win.iso \
-Now, ***Begin Installation***. Windows can't detect the ***virtio disk***, so you need to ***Load Driver*** and select ***virtio-iso/amd64/win10*** when prompted. \
-After successful installation of Windows, install virtio drivers from virtio CDROM. You can then remove virtio iso.
+Скачайте драйвер [virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso). \
+Запустите ***virt-manager*** и создайте новую виртуальную машину. На последнем шаге выберите ***Customize before install***. \
+В разделе ***Overview*** установите ***Chipset*** в ***Q35***, а ***Firmware*** в ***UEFI***. \
+В разделе ***CPUs*** установите ***CPU model*** в ***host-passthrough***, а ***CPU Topology*** в соответствии с вашей системой. \
+Для диска ***SATA*** виртуальной машины установите ***Disk Bus*** в ***virtio***. \
+В разделе ***NIC*** установите ***Device Model*** в ***virtio***. \
+Добавьте оборудование > CDROM: virtio-win.iso. \
+Теперь начните установку. Windows не может обнаружить ***virtio disk***, поэтому вам нужно будет ***Load Driver*** и выбрать ***virtio-iso/amd64/win10***, когда появится запрос. \
+После успешной установки Windows установите драйверы virtio с CDROM. После этого можно удалить virtio iso.
 
-### **Attaching PCI devices**
-Remove Channel Spice, Display Spice, Video QXL, Sound ich* and other unnecessary devices. \
-Now, click on ***Add Hardware***, select ***PCI Devices*** and add the PCI Host devices for your GPU's VGA and HDMI Audio.
+### **Подключение PCI устройств**
+Удалите Channel Spice, Display Spice, Video QXL, Sound ich* и другие ненужные устройства. \
+Теперь нажмите на ***Add Hardware***, выберите ***PCI Devices*** и добавьте PCI Host устройства для вашего GPU VGA и HDMI Audio.
 
 ### **Libvirt Hooks**
-Libvirt hooks automate the process of running specific tasks during VM state change. \
-More info at: [PassthroughPost](https://passthroughpo.st/simple-per-vm-libvirt-hooks-with-the-vfio-tools-hook-helper/)
+Libvirt hooks автоматизируют процесс выполнения определенных задач при изменении состояния виртуальной машины. \
+Подробнее: [PassthroughPost](https://passthroughpo.st/simple-per-vm-libvirt-hooks-with-the-vfio-tools-hook-helper/)
 
-**Note**: Comment Unbind/rebind EFI framebuffer line from start and stop script if you're using AMD 6000 series cards (https://github.com/QaidVoid/Complete-Single-GPU-Passthrough/issues/9).
-Also, move the line to unload AMD kernal module below detaching devices from host. These might also apply to older AMD cards.
+**Примечание**: Закомментируйте строку Unbind/rebind EFI framebuffer в скриптах start и stop, если вы используете видеокарты AMD 6000 серии (https://github.com/QaidVoid/Complete-Single-GPU-Passthrough/issues/9).
+Также переместите строку выгрузки AMD kernel module ниже отключения устройств от хоста. Это также может относиться к более старым видеокартам AMD.
 
 <details>
-  <summary><b>Create Libvirt Hook</b></summary>
+  <summary><b>Создание Libvirt Hook</b></summary>
 
   ```sh
   mkdir /etc/libvirt/hooks
@@ -184,7 +178,7 @@ MISC="${@:4}"
 BASEDIR="$(dirname $0)"
 
 HOOKPATH="$BASEDIR/qemu.d/$GUEST_NAME/$HOOK_NAME/$STATE_NAME"
-set -e # If a script exits with an error, we should as well.
+set -e # Если скрипт завершается с ошибкой, мы также должны завершиться.
 
 if [ -f "$HOOKPATH" ]; then
   eval \""$HOOKPATH"\" "$@"
@@ -201,14 +195,14 @@ fi
 </details>
 
 <details>
-  <summary><b>Create Start Script</b></summary>
+  <summary><b>Создание скрипта запуска</b></summary>
   
   ```sh
   mkdir -p /etc/libvirt/hooks/qemu.d/win10/prepare/begin
   touch /etc/libvirt/hooks/qemu.d/win10/prepare/begin/start.sh
   chmod +x /etc/libvirt/hooks/qemu.d/win10/prepare/begin/start.sh
   ```
-**Note**: If you're on KDE Plasma (Wayland), you need to terminate user services alongside display-manager (https://github.com/QaidVoid/Complete-Single-GPU-Passthrough/issues/31).
+**Примечание**: Если вы используете KDE Plasma (Wayland), вам нужно завершить пользовательские сервисы вместе с display-manager (https://github.com/QaidVoid/Complete-Single-GPU-Passthrough/issues/31).
 
   <table>
   <tr>
@@ -224,29 +218,29 @@ fi
 #!/bin/bash
 set -x
 
-# Stop display manager
+# Остановка display manager
 systemctl stop display-manager
 # systemctl --user -M YOUR_USERNAME@ stop plasma*
 
-# Unbind VTconsoles: might not be needed
+# Отключение VTconsoles: может не понадобиться
 echo 0 > /sys/class/vtconsole/vtcon0/bind
 echo 0 > /sys/class/vtconsole/vtcon1/bind
 
-# Unbind EFI Framebuffer
+# Отключение EFI Framebuffer
 echo efi-framebuffer.0 > /sys/bus/platform/drivers/efi-framebuffer/unbind
 
-# Unload NVIDIA kernel modules
+# Выгрузка модулей NVIDIA
 modprobe -r nvidia_drm nvidia_modeset nvidia_uvm nvidia
 
-# Unload AMD kernel module
+# Выгрузка модуля AMD
 # modprobe -r amdgpu
 
-# Detach GPU devices from host
-# Use your GPU and HDMI Audio PCI host device
+# Отключение GPU устройств от хоста
+# Используйте ваш GPU и HDMI Audio PCI host device
 virsh nodedev-detach pci_0000_01_00_0
 virsh nodedev-detach pci_0000_01_00_1
 
-# Load vfio module
+# Загрузка модуля vfio
 modprobe vfio-pci
   ```
 
@@ -256,7 +250,7 @@ modprobe vfio-pci
 </details>
 
 <details>
-  <summary><b>Create Stop Script</b></summary>
+  <summary><b>Создание скрипта остановки</b></summary>
 
   ```sh
   mkdir -p /etc/libvirt/hooks/qemu.d/win10/release/end
@@ -277,31 +271,31 @@ modprobe vfio-pci
 #!/bin/bash
 set -x
 
-# Attach GPU devices to host
-# Use your GPU and HDMI Audio PCI host device
+# Подключение GPU устройств к хосту
+# Используйте ваш GPU и HDMI Audio PCI host device
 virsh nodedev-reattach pci_0000_01_00_0
 virsh nodedev-reattach pci_0000_01_00_1
 
-# Unload vfio module
+# Выгрузка модуля vfio
 modprobe -r vfio-pci
 
-# Load AMD kernel module
+# Загрузка модуля AMD
 #modprobe amdgpu
 
-# Rebind framebuffer to host
+# Подключение framebuffer к хосту
 echo "efi-framebuffer.0" > /sys/bus/platform/drivers/efi-framebuffer/bind
 
-# Load NVIDIA kernel modules
+# Загрузка модулей NVIDIA
 modprobe nvidia_drm
 modprobe nvidia_modeset
 modprobe nvidia_uvm
 modprobe nvidia
 
-# Bind VTconsoles: might not be needed
+# Подключение VTconsoles: может не понадобиться
 echo 1 > /sys/class/vtconsole/vtcon0/bind
 echo 1 > /sys/class/vtconsole/vtcon1/bind
 
-# Restart Display Manager
+# Перезапуск Display Manager
 systemctl start display-manager
 ```
 
@@ -310,16 +304,16 @@ systemctl start display-manager
   </table>
 </details>
 
-### **Keyboard/Mouse Passthrough**
-In order to be able to use keyboard/mouse in the VM, you can either passthrough the USB Host device or use Evdev passthrough.
+### **Проброс клавиатуры/мыши**
+Для использования клавиатуры/мыши в виртуальной машине можно либо пробросить USB Host устройство, либо использовать Evdev passthrough.
 
-Using USB Host Device is simple, \
-***Add Hardware*** > ***USB Host Device***, add your keyboard and mouse device.
+Использование USB Host Device простое, \
+***Add Hardware*** > ***USB Host Device***, добавьте ваши устройства клавиатуры и мыши.
 
-For Evdev passthrough, follow these steps: \
-Modify libvirt configuration of your VM. \
-**Note**: Save only after adding keyboard and mouse devices or the changes gets lost. \
-Change first line to:
+Для Evdev passthrough следуйте этим шагам: \
+Измените конфигурацию libvirt вашей виртуальной машины. \
+**Примечание**: Сохраняйте только после добавления устройств клавиатуры и мыши, иначе изменения будут потеряны. \
+Измените первую строку на:
 
 <table>
 <tr>
@@ -339,8 +333,8 @@ virsh edit win10
 </tr>
 </table>
 
-Find your keyboard and mouse devices in ***/dev/input/by-id***. You'd generally use the devices ending with ***event-kbd*** and ***event-mouse***. And the devices in your configuration right before closing ***`</domain>`*** tag. \
-Replace ***MOUSE_NAME*** and ***KEYBOARD_NAME*** with your device id.
+Найдите вашу клавиатуру и мышь в ***/dev/input/by-id***. Обычно названия устройств заканчиваются на ***event-kbd*** и ***event-mouse** для мыши и клавиатуры соответсвенно*. Добавьте устройства в конфигурацию перед закрытием тега ***`</domain>`***. \
+Замените ***MOUSE_NAME*** и ***KEYBOARD_NAME*** на идентификаторы ваших устройств.
 
 <table>
 <tr>
@@ -367,7 +361,7 @@ virsh edit win10
 </tr>
 </table>
 
-You need to include these devices in your qemu config.
+Нужно включить эти устройства в конфигурацию qemu.
 <table>
 <tr>
 <th>
@@ -398,7 +392,7 @@ cgroup_device_acl = [
 </tr>
 </table>
 
-Also, switch from PS/2 devices to virtio devices. Add the devices inside ***`<devices>`*** block
+Также переключитесь с PS/2 устройств на virtio устройства. Добавьте устройства внутри блока ***`<devices>`***.
 <table>
 <tr>
 <th>
@@ -424,18 +418,18 @@ virsh edit win10
 </tr>
 </table>
 
-### **Audio Passthrough**
-VM's audio can be routed to the host using ***Pipewire*** or ***Pulseaudio***. \
-You can also use [Scream](https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF#Passing_VM_audio_to_host_via_Scream) instead.
+### **Проброс аудио**
+Аудио с гостевой ОС можно перенаправить на хост с помощью ***Pipewire*** или ***Pulseaudio***. \
+Также можно использовать [Scream](https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF#Passing_VM_audio_to_host_via_Scream).
 
 <details>
     <summary><b>Pipewire</b></summary>
 
-From [ArchWiki](https://wiki.archlinux.org/title/PCI_passthrough_via_OVMF#Passing_audio_from_virtual_machine_to_host_via_JACK_and_PipeWire)
+Из [ArchWiki](https://wiki.archlinux.org/title/PCI_passthrough_via_OVMF#Passing_audio_from_virtual_machine_to_host_via_JACK_and_PipeWire)
 
-You need to have Pipewire with JACK support.
+Нужен Pipewire с поддержкой JACK.
 
-***Note***: You may use [Carla](https://kx.studio//Applications:Carla) to figure out appropriate input/output. Replace `1000` with your current user id.
+***Примечание***: Можено использовать [Carla](https://kx.studio//Applications:Carla) для определения подходящего ввода/вывода. Замените `1000` на ваш текущий идентификатор пользователя.
 <table>
 <tr>
 <th>
@@ -470,7 +464,7 @@ virsh edit win10
 <details>
     <summary><b>Pulseaudio</b></summary>
 
-***Note***: Replace `1000` with your current user id.
+***Примечание***: Замените `1000` на ваш текущий идентификатор пользователя.
 
 <table>
 <tr>
@@ -501,9 +495,8 @@ virsh edit win10
 </table>
 </details>
 
-
-### **Video card driver virtualisation detection**
-Video Card drivers refuse to run in Virtual Machine, so you need to spoof Hyper-V Vendor ID.
+### **Обнаружение виртуализации видеокарты**
+Драйверы видеокарт отказываются работать в виртуальной машине, поэтому нужно подделать Hyper-V Vendor ID.
 <table>
 <tr>
 <th>
@@ -532,7 +525,7 @@ virsh edit win10
 </tr>
 </table>
 
-NVIDIA guest drivers also require hiding the KVM CPU leaf:
+Гостевые драйверы NVIDIA также требуют скрытия KVM CPU leaf:
 <table>
 <tr>
 <th>
@@ -559,28 +552,28 @@ virsh edit win10
 </tr>
 </table>
 
-### **vBIOS Patching**
-***NOTE: You are only making changes on dumped ROM file. Your hardware is safe.*** \
-While most of the GPU can be passed with stock vBIOS, some GPU requires vBIOS patching to passthrough. \
-In order to patch vBIOS, you need to first dump the GPU vBIOS from your system. \
-If you have Windows installed, you can use [GPU-Z](https://www.techpowerup.com/gpuz) to dump vBIOS. \
-To dump vBIOS on Linux, you can use following command (replace PCI id with yours):
+### **Патчинг vBIOS**
+***ПРИМЕЧАНИЕ: Вы вносите изменения только в дамп ROM файла. Ваше оборудование в безопасности(Отвечаю).*** \
+Хотя большинство GPU можно пробросить с использованием стокового vBIOS, некоторым GPU требуется патчинг vBIOS для проброса. \
+Для патчинга vBIOS сначала нужно сдампить vBIOS вашей видеокарты. \
+Если у вас установлена Windows, вы можете использовать [GPU-Z](https://www.techpowerup.com/gpuz) для дампа vBIOS. \
+Для дампа vBIOS на Linux используйте следующую команду (замените PCI id на ваш):
 ```sh
 echo 1 > /sys/bus/pci/devices/0000:01:00.0/rom
 cat /sys/bus/pci/devices/0000:01:00.0/rom > path/to/dump/vbios.rom
 echo 0 > /sys/bus/pci/devices/0000:01:00.0/rom
 ```
-If you're not in root shell, you should use the above commands with sudo as:
+Если вы не в root shell, используйте команды с sudo:
 ```sh
 echo 1 | sudo tee /sys/bus/pci/devices/0000:01:00.0/rom
 sudo cat /sys/bus/pci/devices/0000:01:00.0/rom > path/to/dump/vbios.rom
 echo 0 | sudo tee /sys/bus/pci/devices/0000:01:00.0/rom
 ```
-To patch vBIOS, you need to use Hex Editor (eg., [Okteta](https://utils.kde.org/projects/okteta)) and trim unnecessary header. \
-For NVIDIA GPU, using hex editor, search string “VIDEO”, and remove everything before HEX value 55. \
-I'm not sure about AMD, but the process should be similar.
+Для патчинга vBIOS используйте Hex Editor (например, [Okteta](https://utils.kde.org/projects/okteta)) и удалите ненужные заголовки. \
+Для NVIDIA GPU, используя hex editor, найдите строку “VIDEO” и удалите всё до HEX значения 55. \
+Для AMD процесс похожий, но я не уверен в деталях.
 
-To use patched vBIOS, edit VM's configuration to include patched vBIOS inside ***hostdev*** block of VGA
+Чтобы использовать пропатченный vBIOS, отредактируйте конфигурацию виртуальной машины, чтобы включить пропатченный vBIOS внутри блока ***hostdev*** VGA.
 
   <table>
   <tr>
@@ -608,10 +601,12 @@ To use patched vBIOS, edit VM's configuration to include patched vBIOS inside **
   </tr>
   </table>
 
-### **See Also**
+### **Смотрите также**
 > [Single GPU Passthrough Troubleshooting](https://docs.google.com/document/d/17Wh9_5HPqAx8HHk-p2bGlR0E-65TplkG18jvM98I7V8)<br/>
 > [Single GPU Passthrough by joeknock90](https://github.com/joeknock90/Single-GPU-Passthrough)<br/>
 > [Single GPU Passthrough by YuriAlek](https://gitlab.com/YuriAlek/vfio)<br/>
 > [Single GPU Passthrough by wabulu](https://github.com/wabulu/Single-GPU-passthrough-amd-nvidia)<br/>
 > [ArchLinux PCI Passthrough](https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF)<br/>
 > [Gentoo GPU Passthrough](https://wiki.gentoo.org/wiki/GPU_passthrough_with_libvirt_qemu_kvm)<br/>
+
+---
